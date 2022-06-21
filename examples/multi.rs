@@ -13,6 +13,11 @@ use panic_halt as _;
 
 use minimult_cortex_m::*;
 
+use stm32f4xx_hal::prelude::*;
+use stm32f4xx_hal::timer::Timer;
+use stm32f4xx_hal::stm32;
+use stm32::{interrupt, Interrupt};
+
 #[entry]
 fn main() -> !
 {
@@ -32,6 +37,7 @@ fn main() -> !
     mt.register(2/*tid*/, 1, 256, || task2(shch2));
 
     // SysTick settings
+    /*
     let cmperi = Peripherals::take().unwrap();
     let mut syst = cmperi.SYST;
     syst.set_clock_source(cortex_m::peripheral::syst::SystClkSource::Core);
@@ -39,7 +45,22 @@ fn main() -> !
     syst.clear_current();
     syst.enable_counter();
     syst.enable_interrupt();
+    */
+    let peripherals = stm32f4xx_hal::stm32::Peripherals::take().unwrap();
+    let mut rcc = peripherals.RCC.constrain();
+    let mut flash = peripherals.FLASH.constrain();
+    let clocks = rcc.cfgr.freeze(&mut flash.acr);
 
+
+    let tim7 = peripherals.TIM7;
+    let _tim7 = Timer::tim7(tim7, 1.hz(), clocks, &mut rcc.apb1);
+    let tim7 = unsafe {&* stm32::TIM7::ptr()};
+    tim7.dier.write(|w| w.uie().set_bit());
+    tim7.cr1.write(|w| w.cen().set_bit());
+    unsafe {
+        stm32::NVIC::unmask(Interrupt::TIM7);
+    }
+   
     // must be error in terms of lifetime and ownership
     //drop(mem);
     //drop(q);
@@ -53,11 +74,19 @@ fn main() -> !
     mt.run()
 }
 
+#[interrupt]
+fn TIM7() {
+    tim2.clear_interrupt();
+    Minimult::kick(0/*tid*/);    
+}
+
+/*
 #[exception]
 fn SysTick()
 {
     Minimult::kick(0/*tid*/);
 }
+*/
 
 fn task0(mut snd: MTMsgSender<u32>)
 {
