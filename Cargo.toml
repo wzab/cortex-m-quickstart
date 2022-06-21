@@ -1,14 +1,15 @@
 [package]
-authors = ["{{authors}}"]
-edition = "2018"
+authors = ["Wojciech M. Zabolotny"]
+edition = "2021"
 readme = "README.md"
-name = "{{project-name}}"
+name = "wz-qemu3"
 version = "0.1.0"
 
 [dependencies]
 cortex-m = "0.6.0"
 cortex-m-rt = "0.6.10"
 cortex-m-semihosting = "0.3.3"
+minimult_cortex-m = "0.3.3"
 panic-halt = "0.2.0"
 
 # Uncomment for the panic example.
@@ -26,7 +27,7 @@ panic-halt = "0.2.0"
 
 # this lets you use `cargo fix`!
 [[bin]]
-name = "{{project-name}}"
+name = "wz-qemu3"
 test = false
 bench = false
 
