@@ -7,9 +7,9 @@ version = "0.1.0"
 
 [dependencies]
 cortex-m = "0.7.1"
-cortex-m-rt = "0.7.1"
+cortex-m-rt = "^0.6.8"
 cortex-m-semihosting = "0.3.3"
-stm32f4xx-hal = "0.13.2"
+#stm32f4xx-hal = "^0.13.2"
 minimult_cortex-m = "0.3.3"
 panic-halt = "0.2.0"
 
@@ -24,7 +24,7 @@ panic-halt = "0.2.0"
 # and then use `cargo build --examples device` to build it.
 [dependencies.stm32f4]
 features = ["stm32f405", "rt"]
-version = "0.7.1"
+version = "^0.7.1"
 
 # this lets you use `cargo fix`!
 [[bin]]
