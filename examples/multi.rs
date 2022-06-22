@@ -3,25 +3,35 @@
 #![no_main]
 #![no_std]
 
-use cortex_m::Peripherals;
+//use cortex_m;
+//use cortex_m::Peripherals;
+use cortex_m::{
+   interrupt::{free},
+   peripheral::NVIC,
+};
 use cortex_m_rt::entry;
-use cortex_m_rt::exception;
 use cortex_m_semihosting::debug;
 use cortex_m_semihosting::hprintln;
-//use panic_semihosting as _;
-use panic_halt as _;
+extern crate panic_semihosting;
+//use panic_halt as _;
 
 use minimult_cortex_m::*;
-
-use stm32f4xx_hal::prelude::*;
-use stm32f4xx_hal::timer::Timer;
-use stm32f4xx_hal::stm32;
-use stm32::{interrupt, Interrupt};
+use stm32_hal2::{
+        clocks::{self, Clocks, InputSrc, PllSrc, Pllp},
+    pac,
+    pac::interrupt,
+    timer::{Timer,TimerInterrupt},
+};
 
 #[entry]
 fn main() -> !
 {
     hprintln!("To znowu ja!").unwrap();
+    // Set up CPU peripherals
+    let mut cp = cortex_m::Peripherals::take().unwrap();
+    // Set up microcontroller peripherals
+    let mut dp = pac::Peripherals::take().unwrap();
+
     let mut mem = Minimult::mem::<[u8; 4096]>();
     let mut mt = Minimult::new(&mut mem, 3);
 
@@ -46,20 +56,25 @@ fn main() -> !
     syst.enable_counter();
     syst.enable_interrupt();
     */
-    let peripherals = stm32f4xx_hal::stm32::Peripherals::take().unwrap();
-    let mut rcc = peripherals.RCC.constrain();
-    let mut flash = peripherals.FLASH.constrain();
-    let clocks = rcc.cfgr.freeze(&mut flash.acr);
+    // The clock configuration below had to be modified to run in QEMU netduinoplus2
+    let clock_cfg  = Clocks{
+      input_src: InputSrc::Pll(PllSrc::Hse(16_000_000)),
+      pllm: 16,
+      plln: 80,
+      pllp: Pllp::Div8,
+      ..Default::default()
+    };
+    hprintln!("sysclk {} {} {} {}", clock_cfg.pllm, clock_cfg.plln, clock_cfg.pllp.value(), clock_cfg.sysclk()).unwrap();
+    clock_cfg.setup().unwrap();
+    hprintln!("after clock setup").unwrap();
+    let mut timer = Timer::new_tim3(dp.TIM3, 0.3, Default::default(),&clock_cfg);
+    hprintln!("before ena irq").unwrap();
+    timer.enable_interrupt(TimerInterrupt::Update);
+    hprintln!("after ena irq").unwrap();
+    timer.enable();
+    hprintln!("after ena timer").unwrap();
 
-
-    let tim7 = peripherals.TIM7;
-    let _tim7 = Timer::tim7(tim7, 1.hz(), clocks, &mut rcc.apb1);
-    let tim7 = unsafe {&* stm32::TIM7::ptr()};
-    tim7.dier.write(|w| w.uie().set_bit());
-    tim7.cr1.write(|w| w.cen().set_bit());
-    unsafe {
-        stm32::NVIC::unmask(Interrupt::TIM7);
-    }
+    //NVIC::unpend(pac::Interrupt::TIM3);
    
     // must be error in terms of lifetime and ownership
     //drop(mem);
@@ -69,15 +84,20 @@ fn main() -> !
     //drop(sh);
     //drop(shch1);
     //drop(shch2);
-
+    unsafe {
+       NVIC::unmask(pac::Interrupt::TIM3);
+    }
     hprintln!("Minimult run").unwrap();
     mt.run()
 }
 
 #[interrupt]
-fn TIM7() {
-    tim2.clear_interrupt();
-    Minimult::kick(0/*tid*/);    
+fn TIM3() {
+    free(|cs| {
+        unsafe { (*pac::TIM3::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
+        Minimult::kick(0/*tid*/);    
+        hprintln!("Interrupt").unwrap();
+    });
 }
 
 /*
@@ -127,3 +147,8 @@ fn task2(shch: MTSharedCh<u32>)
     hprintln!("task2 exit").unwrap();
     debug::exit(debug::EXIT_SUCCESS);
 }
+
+//#[panic_handler]
+//fn panic(x: &PanicInfo) -> !{
+//   hprintln!("PAnic! {}",x);
+//}
