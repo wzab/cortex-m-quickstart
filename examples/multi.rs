@@ -27,8 +27,6 @@ use stm32f4xx_hal::{
     timer::{Event},
 };
 
-static G_SEND: Mutex<RefCell<Option<minimult_cortex_m::MTMsgSender<u32>>>> = Mutex::new(RefCell::new(None));
-
 #[entry]
 fn main() -> !
 {
@@ -40,21 +38,23 @@ fn main() -> !
     	.cfgr
         .freeze();
 
-    let mut mem = Minimult::mem::<[u8; 4096]>();
+    let mut mem = Minimult::mem::<[u8; 8192]>();
     let mut mt = Minimult::new(&mut mem, 4);
 
     let mut q = mt.msgq::<u32>(4);
     let (snd, rcv) = q.ch();
-    // Move the sender into our global storage
-    cortex_m::interrupt::free(|cs| *G_SEND.borrow(cs).borrow_mut() = Some(snd));
+    let s_snd = mt.share(snd);
+    //Create channels for shared access
+    let snd1 = s_snd.ch();
+    let snd2 = s_snd.ch();
 
     
     let sh = mt.share::<u32>(0);
     let shch1 = sh.ch();
     let shch2 = sh.ch();
 
-    mt.register(0/*tid*/, 1, 256, || task0());
-    mt.register(3/*tid*/, 1, 256, || task0b());
+    mt.register(0/*tid*/, 1, 256, || task0(snd1));
+    mt.register(3/*tid*/, 1, 256, || task0b(snd2));
     mt.register(1/*tid*/, 1, 256, || task1(rcv, shch1));
     mt.register(2/*tid*/, 1, 256, || task2(shch2));
 
@@ -90,6 +90,7 @@ fn main() -> !
     //drop(shch2);
     unsafe {
        cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIM2);
+       cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIM3);
     }
     hprintln!("Minimult run").unwrap();
     Minimult::kick(0/*tid*/);    
@@ -101,7 +102,7 @@ fn TIM2() {
     free(|cs| {
         unsafe { (*pac::TIM2::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
         Minimult::kick(0/*tid*/);    
-        hprintln!("Interrupt").unwrap();
+        hprintln!("Interrupt 2").unwrap();
     });
 }
 
@@ -110,7 +111,7 @@ fn TIM3() {
     free(|cs| {
         unsafe { (*pac::TIM3::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
         Minimult::kick(3/*tid*/);    
-        hprintln!("Interrupt").unwrap();
+        hprintln!("Interrupt 3").unwrap();
     });
 }
 
@@ -122,30 +123,26 @@ fn SysTick()
 }
 */
 
-fn task0()
+fn task0(sc_snd: MTSharedCh<MTMsgSender<u32>>)
 {
     for vsnd in 0.. {
         Minimult::idle();
         let val2 = vsnd+3;
         hprintln!("task0 send1 {}", vsnd).unwrap();
         hprintln!("task0 send2 {}", val2).unwrap();
-        cortex_m::interrupt::free(|cs| 
-          {let mut snd = G_SEND.borrow(cs).replace(None).unwrap();
-          snd.send(vsnd);
-          snd.send(val2);
-          });
+        let mut snd = sc_snd.touch();
+        snd.send(vsnd);
+        snd.send(val2);
     }
 }
 
-fn task0b()
+fn task0b(sc_snd: MTSharedCh<MTMsgSender<u32>>)
 {
     for vsnd in 0.. {
         Minimult::idle();
         hprintln!("task0b send1 {}", vsnd).unwrap();
-        cortex_m::interrupt::free(|cs|
-         {let mut snd = G_SEND.borrow(cs).replace(None).unwrap();
-         snd.send(vsnd);
-         });
+        let mut snd = sc_snd.touch();
+        snd.send(vsnd);
     }
 }
 
