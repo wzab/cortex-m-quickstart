@@ -19,10 +19,13 @@ use minimult_cortex_m::*;
 use stm32f1xx_hal::{
         //clocks::{self, Clocks, InputSrc, PllSrc, Pllp},
     pac,
-    pac::interrupt,
+    pac::{interrupt,Interrupt,TIM1},
     prelude::*,
     timer::{CounterMs, Event},
 };
+
+// Make timer interrupt registers globally available
+static G_TIM: Mutex<RefCell<Option<CounterMs<TIM1>>>> = Mutex::new(RefCell::new(None));
 
 #[entry]
 fn main() -> !
@@ -57,9 +60,12 @@ fn main() -> !
     syst.enable_counter();
     syst.enable_interrupt();
     */
-    let mut timer = p.TIM3.counter_ms(&clocks);
+    let mut timer = p.TIM1.counter_ms(&clocks);
     timer.start(1.secs()).unwrap();
     timer.listen(Event::Update);
+    // Move the timer into our global storage
+    cortex_m::interrupt::free(|cs| *G_TIM.borrow(cs).borrow_mut() = Some(timer));
+
     hprintln!("before ena irq").unwrap();
     hprintln!("after ena irq").unwrap();
     hprintln!("after ena timer").unwrap();
@@ -75,18 +81,19 @@ fn main() -> !
     //drop(shch1);
     //drop(shch2);
     unsafe {
-       NVIC::unmask(pac::Interrupt::TIM2);
+       cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIM1_UP_TIM16);
     }
     hprintln!("Minimult run").unwrap();
     mt.run()
 }
 
 #[interrupt]
-fn TIM3() {
+fn TIM1_UP_TIM16() {
+    static mut TIM: Option<CounterMs<TIM1>> = None;
     free(|cs| {
-        unsafe { (*pac::TIM2::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
         Minimult::kick(0/*tid*/);    
         hprintln!("Interrupt").unwrap();
+        unsafe { (*pac::TIM1::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
     });
 }
 
