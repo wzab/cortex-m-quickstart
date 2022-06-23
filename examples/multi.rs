@@ -7,7 +7,7 @@
 //use cortex_m::Peripherals;
 use cortex_m::{
    interrupt::{free},
-   peripheral::NVIC,
+//   peripheral::NVIC,
 };
 use cortex_m_rt::entry;
 use cortex_m_semihosting::debug;
@@ -16,12 +16,12 @@ extern crate panic_semihosting;
 //use panic_halt as _;
 
 use minimult_cortex_m::*;
-use stm32f1xx_hal::{
+use stm32f4xx_hal::{
         //clocks::{self, Clocks, InputSrc, PllSrc, Pllp},
     pac,
-    pac::{interrupt,Interrupt,TIM1},
+    pac::{interrupt,Interrupt,TIM2},
     prelude::*,
-    timer::{CounterMs, Event},
+    timer::{Event},
 };
 
 #[entry]
@@ -29,9 +29,11 @@ fn main() -> !
 {
     hprintln!("To znowu ja!").unwrap();
     let p = pac::Peripherals::take().unwrap();
-    let mut flash = p.FLASH.constrain();
+    //let mut flash = p.FLASH.constrain();
     let rcc = p.RCC.constrain();
-    let clocks = rcc.cfgr.freeze(&mut flash.acr);
+    let clocks = rcc
+    	.cfgr
+        .freeze();
 
     let mut mem = Minimult::mem::<[u8; 4096]>();
     let mut mt = Minimult::new(&mut mem, 3);
@@ -57,7 +59,7 @@ fn main() -> !
     syst.enable_counter();
     syst.enable_interrupt();
     */
-    let mut timer = p.TIM1.counter_ms(&clocks);
+    let mut timer = p.TIM2.counter_ms(&clocks);
     timer.start(1.secs()).unwrap();
     timer.listen(Event::Update);
     hprintln!("before ena irq").unwrap();
@@ -75,16 +77,17 @@ fn main() -> !
     //drop(shch1);
     //drop(shch2);
     unsafe {
-       cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIM1_UP_TIM16);
+       cortex_m::peripheral::NVIC::unmask(pac::Interrupt::TIM2);
     }
     hprintln!("Minimult run").unwrap();
+    Minimult::kick(0/*tid*/);    
     mt.run()
 }
 
 #[interrupt]
-fn TIM1_UP_TIM16() {
+fn TIM2() {
     free(|cs| {
-        unsafe { (*pac::TIM1::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
+        unsafe { (*pac::TIM2::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
         Minimult::kick(0/*tid*/);    
         hprintln!("Interrupt").unwrap();
     });
