@@ -64,17 +64,19 @@ fn main() -> !
       pllp: Pllp::Div8,
       ..Default::default()
     };
+    //let clock_cfg = Clocks::default();
     hprintln!("sysclk {} {} {} {}", clock_cfg.pllm, clock_cfg.plln, clock_cfg.pllp.value(), clock_cfg.sysclk()).unwrap();
     clock_cfg.setup().unwrap();
+    stm32_hal2::debug_workaround();
     hprintln!("after clock setup").unwrap();
-    let mut timer = Timer::new_tim3(dp.TIM3, 0.3, Default::default(),&clock_cfg);
+    let mut timer = Timer::new_tim2(dp.TIM2, 0.3, Default::default(),&clock_cfg);
     hprintln!("before ena irq").unwrap();
     timer.enable_interrupt(TimerInterrupt::Update);
     hprintln!("after ena irq").unwrap();
     timer.enable();
     hprintln!("after ena timer").unwrap();
 
-    //NVIC::unpend(pac::Interrupt::TIM3);
+    //NVIC::unpend(pac::Interrupt::TIM2);
    
     // must be error in terms of lifetime and ownership
     //drop(mem);
@@ -85,16 +87,16 @@ fn main() -> !
     //drop(shch1);
     //drop(shch2);
     unsafe {
-       NVIC::unmask(pac::Interrupt::TIM3);
+       NVIC::unmask(pac::Interrupt::TIM2);
     }
     hprintln!("Minimult run").unwrap();
     mt.run()
 }
 
 #[interrupt]
-fn TIM3() {
+fn TIM2() {
     free(|cs| {
-        unsafe { (*pac::TIM3::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
+        unsafe { (*pac::TIM2::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
         Minimult::kick(0/*tid*/);    
         hprintln!("Interrupt").unwrap();
     });
