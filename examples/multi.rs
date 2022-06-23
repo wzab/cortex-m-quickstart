@@ -12,10 +12,13 @@ use cortex_m::{
 use cortex_m_rt::entry;
 use cortex_m_semihosting::debug;
 use cortex_m_semihosting::hprintln;
+use core::cell::RefCell;
+use cortex_m::interrupt::Mutex;
 extern crate panic_semihosting;
 //use panic_halt as _;
 
 use minimult_cortex_m::*;
+
 use stm32f4xx_hal::{
         //clocks::{self, Clocks, InputSrc, PllSrc, Pllp},
     pac,
@@ -23,6 +26,8 @@ use stm32f4xx_hal::{
     prelude::*,
     timer::{Event},
 };
+
+static G_SEND: Mutex<RefCell<Option<minimult_cortex_m::MTMsgSender<u32>>>> = Mutex::new(RefCell::new(None));
 
 #[entry]
 fn main() -> !
@@ -40,12 +45,16 @@ fn main() -> !
 
     let mut q = mt.msgq::<u32>(4);
     let (snd, rcv) = q.ch();
+    // Move the sender into our global storage
+    cortex_m::interrupt::free(|cs| *G_SEND.borrow(cs).borrow_mut() = Some(snd));
 
+    
     let sh = mt.share::<u32>(0);
     let shch1 = sh.ch();
     let shch2 = sh.ch();
 
-    mt.register(0/*tid*/, 1, 256, || task0(snd));
+    mt.register(0/*tid*/, 1, 256, || task0());
+    mt.register(3/*tid*/, 1, 256, || task0b());
     mt.register(1/*tid*/, 1, 256, || task1(rcv, shch1));
     mt.register(2/*tid*/, 1, 256, || task2(shch2));
 
@@ -62,6 +71,9 @@ fn main() -> !
     let mut timer = p.TIM2.counter_ms(&clocks);
     timer.start(1.secs()).unwrap();
     timer.listen(Event::Update);
+    let mut timer2 = p.TIM3.counter_ms(&clocks);
+    timer2.start(1100.millis()).unwrap();
+    timer2.listen(Event::Update);
     hprintln!("before ena irq").unwrap();
     hprintln!("after ena irq").unwrap();
     hprintln!("after ena timer").unwrap();
@@ -93,6 +105,15 @@ fn TIM2() {
     });
 }
 
+#[interrupt]
+fn TIM3() {
+    free(|cs| {
+        unsafe { (*pac::TIM3::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
+        Minimult::kick(3/*tid*/);    
+        hprintln!("Interrupt").unwrap();
+    });
+}
+
 /*
 #[exception]
 fn SysTick()
@@ -101,15 +122,28 @@ fn SysTick()
 }
 */
 
-fn task0(mut snd: MTMsgSender<u32>)
+fn task0()
 {
     for vsnd in 0.. {
         Minimult::idle();
         let val2 = vsnd+3;
         hprintln!("task0 send1 {}", vsnd).unwrap();
-        snd.send(vsnd);
         hprintln!("task0 send2 {}", val2).unwrap();
+        //let snd =  cortex_m::interrupt::free(|cs| G_SEND.borrow(cs).borrow_mut().unwrap());
+        let snd = G_SEND.lock();
+        snd.send(vsnd);
         snd.send(val2);
+    }
+}
+
+fn task0b()
+{
+    for vsnd in 0.. {
+        Minimult::idle();
+        hprintln!("task0b send1 {}", vsnd).unwrap();
+        //let snd =  cortex_m::interrupt::free(|cs| G_SEND.borrow(cs).borrow_mut().unwrap());
+        let snd = G_SEND.lock();
+        snd.send(vsnd);
     }
 }
 
