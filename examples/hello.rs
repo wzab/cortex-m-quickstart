@@ -3,7 +3,8 @@
 #![no_main]
 #![no_std]
 
-use panic_halt as _;
+//use panic_halt as _;
+extern crate panic_semihosting;
 
 use cortex_m_rt::entry;
 use cortex_m_semihosting::{debug, hprintln};
