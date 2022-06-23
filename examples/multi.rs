@@ -16,21 +16,22 @@ extern crate panic_semihosting;
 //use panic_halt as _;
 
 use minimult_cortex_m::*;
-use stm32_hal2::{
-        clocks::{self, Clocks, InputSrc, PllSrc, Pllp},
+use stm32f1xx_hal::{
+        //clocks::{self, Clocks, InputSrc, PllSrc, Pllp},
     pac,
     pac::interrupt,
-    timer::{Timer,TimerInterrupt},
+    prelude::*,
+    timer::{CounterMs, Event},
 };
 
 #[entry]
 fn main() -> !
 {
     hprintln!("To znowu ja!").unwrap();
-    // Set up CPU peripherals
-    let mut cp = cortex_m::Peripherals::take().unwrap();
-    // Set up microcontroller peripherals
-    let mut dp = pac::Peripherals::take().unwrap();
+    let p = pac::Peripherals::take().unwrap();
+    let mut flash = p.FLASH.constrain();
+    let rcc = p.RCC.constrain();
+    let clocks = rcc.cfgr.freeze(&mut flash.acr);
 
     let mut mem = Minimult::mem::<[u8; 4096]>();
     let mut mt = Minimult::new(&mut mem, 3);
@@ -56,24 +57,11 @@ fn main() -> !
     syst.enable_counter();
     syst.enable_interrupt();
     */
-    // The clock configuration below had to be modified to run in QEMU netduinoplus2
-    let clock_cfg  = Clocks{
-      input_src: InputSrc::Pll(PllSrc::Hse(16_000_000)),
-      pllm: 16,
-      plln: 80,
-      pllp: Pllp::Div8,
-      ..Default::default()
-    };
-    //let clock_cfg = Clocks::default();
-    hprintln!("sysclk {} {} {} {}", clock_cfg.pllm, clock_cfg.plln, clock_cfg.pllp.value(), clock_cfg.sysclk()).unwrap();
-    clock_cfg.setup().unwrap();
-    stm32_hal2::debug_workaround();
-    hprintln!("after clock setup").unwrap();
-    let mut timer = Timer::new_tim2(dp.TIM2, 0.3, Default::default(),&clock_cfg);
+    let mut timer = p.TIM3.counter_ms(&clocks);
+    timer.start(1.secs()).unwrap();
+    timer.listen(Event::Update);
     hprintln!("before ena irq").unwrap();
-    timer.enable_interrupt(TimerInterrupt::Update);
     hprintln!("after ena irq").unwrap();
-    timer.enable();
     hprintln!("after ena timer").unwrap();
 
     //NVIC::unpend(pac::Interrupt::TIM2);
@@ -94,7 +82,7 @@ fn main() -> !
 }
 
 #[interrupt]
-fn TIM2() {
+fn TIM3() {
     free(|cs| {
         unsafe { (*pac::TIM2::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
         Minimult::kick(0/*tid*/);    
