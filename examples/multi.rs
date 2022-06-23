@@ -24,9 +24,6 @@ use stm32f1xx_hal::{
     timer::{CounterMs, Event},
 };
 
-// Make timer interrupt registers globally available
-static G_TIM: Mutex<RefCell<Option<CounterMs<TIM1>>>> = Mutex::new(RefCell::new(None));
-
 #[entry]
 fn main() -> !
 {
@@ -63,9 +60,6 @@ fn main() -> !
     let mut timer = p.TIM1.counter_ms(&clocks);
     timer.start(1.secs()).unwrap();
     timer.listen(Event::Update);
-    // Move the timer into our global storage
-    cortex_m::interrupt::free(|cs| *G_TIM.borrow(cs).borrow_mut() = Some(timer));
-
     hprintln!("before ena irq").unwrap();
     hprintln!("after ena irq").unwrap();
     hprintln!("after ena timer").unwrap();
@@ -89,11 +83,10 @@ fn main() -> !
 
 #[interrupt]
 fn TIM1_UP_TIM16() {
-    static mut TIM: Option<CounterMs<TIM1>> = None;
     free(|cs| {
+        unsafe { (*pac::TIM1::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
         Minimult::kick(0/*tid*/);    
         hprintln!("Interrupt").unwrap();
-        unsafe { (*pac::TIM1::ptr()).sr.modify(|_, w| w.uif().clear_bit()) }
     });
 }
 
