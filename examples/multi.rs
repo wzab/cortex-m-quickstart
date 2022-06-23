@@ -41,7 +41,7 @@ fn main() -> !
         .freeze();
 
     let mut mem = Minimult::mem::<[u8; 4096]>();
-    let mut mt = Minimult::new(&mut mem, 3);
+    let mut mt = Minimult::new(&mut mem, 4);
 
     let mut q = mt.msgq::<u32>(4);
     let (snd, rcv) = q.ch();
@@ -129,10 +129,11 @@ fn task0()
         let val2 = vsnd+3;
         hprintln!("task0 send1 {}", vsnd).unwrap();
         hprintln!("task0 send2 {}", val2).unwrap();
-        //let snd =  cortex_m::interrupt::free(|cs| G_SEND.borrow(cs).borrow_mut().unwrap());
-        let snd = G_SEND.lock();
-        snd.send(vsnd);
-        snd.send(val2);
+        cortex_m::interrupt::free(|cs| 
+          {let mut snd = G_SEND.borrow(cs).replace(None).unwrap();
+          snd.send(vsnd);
+          snd.send(val2);
+          });
     }
 }
 
@@ -141,9 +142,10 @@ fn task0b()
     for vsnd in 0.. {
         Minimult::idle();
         hprintln!("task0b send1 {}", vsnd).unwrap();
-        //let snd =  cortex_m::interrupt::free(|cs| G_SEND.borrow(cs).borrow_mut().unwrap());
-        let snd = G_SEND.lock();
-        snd.send(vsnd);
+        cortex_m::interrupt::free(|cs|
+         {let mut snd = G_SEND.borrow(cs).replace(None).unwrap();
+         snd.send(vsnd);
+         });
     }
 }
 
